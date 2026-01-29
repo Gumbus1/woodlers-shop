@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woodler's Favorite Things</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; color: #2c3e50; }
+        .intro { text-align: center; margin-bottom: 40px; color: #666; }
+        
+        /* Store Layout */
+        .shop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .product-card { background: white; border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+        .product-img { background: #ddd; height: 150px; width: 100%; border-radius: 5px; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; color: #888; font-weight: bold; }
+        .price { font-size: 1.2em; color: #27ae60; font-weight: bold; margin: 10px 0; }
+        button { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background 0.3s; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+
+        /* Cart & API Section */
+        .dashboard { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .cart-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
+        input[type="number"] { width: 60px; padding: 5px; }
+
+        /* Flag Styles */
+        .flag-box { background-color: #2c3e50; color: #00ff00; padding: 10px; margin-top: 10px; font-family: monospace; border-radius: 5px; display: none; word-break: break-all; }
+        
+        /* API Crash Simulation */
+        .crash-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(150, 0, 0, 0.9); color: white; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h1>Woodler's Favorite Things</h1>
+    <p class="intro">Welcome to the class shop. Exclusive items. Limited Stock.</p>
+
+    <div class="shop-grid">
+        <div class="product-card">
+            <div class="product-img"><img src="ballpit.jpg"/></div>
+            <h3>Ball Pit</h3>
+            <div class="price">$39.99</div>
+            <button id="btn-1" onclick="attemptPurchase(1, 'Ball Pit', 39.99)">Add to Cart</button>
+            <div id="msg-1" style="color:red; font-size:0.8em; height:20px;"></div>
+        </div>
+
+        <div class="product-card">
+            <div class="product-img"><img src="comfy.jpg"/></div>
+            <h3>Comfy Hoodie</h3>
+            <div class="price">$29.99</div>
+            <button id="btn-2" onclick="attemptPurchase(2, 'Comfy Hoodie', 29.99)">Add to Cart</button>
+            <div id="msg-2" style="color:red; font-size:0.8em; height:20px;"></div>
+        </div>
+
+        <div class="product-card">
+            <div class="product-img"><img src="tractorted.jpg"/></div>
+            <h3>Tractor Ted: Season 1</h3>
+            <div class="price">$17.99</div>
+            <button id="btn-3" onclick="attemptPurchase(3, 'Tractor Ted', 17.99)">Add to Cart</button>
+            <div id="msg-3" style="color:red; font-size:0.8em; height:20px;"></div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        
+        <div class="panel">
+            <h2>Your Cart</h2>
+            <div id="cart-contents">Cart is empty.</div>
+            <hr>
+            <h3>Total: <span id="total-price">$0.00</span></h3>
+            <div id="flag-2" class="flag-box"></div> <div id="flag-1" class="flag-box"></div> </div>
+
+        <div class="panel">
+            <h2>Shipping Calculator API</h2>
+            <p>Enter Zip Code to estimate shipping:</p>
+            <input type="text" id="zipcode" placeholder="12345" maxlength="5">
+            <button onclick="calculateShipping()">Calculate</button>
+            <div id="shipping-result" style="margin-top:10px; color:#666;"></div>
+        </div>
+    </div>
+
+    <div id="api-crash" class="crash-overlay">
+        <h1>503 SERVICE UNAVAILABLE</h1>
+        <p>API Resource Exhausted. System Crash.</p>
+        <div id="flag-3" style="background:black; padding:20px; border:1px solid lime; font-family:monospace; margin-top:20px;"></div>
+    </div>
+
+    <script>
+        const _0x1 = "RkxBR3tSQUNFX0NPTkRJVElPTl9XT059"; 
+        const _0x2 = "RkxBR3tORUdBVElWRV9CSUxMSU5HX0VSUk9SfQ==";
+        const _0x3 = "RkxBR3tBUElfUkFURV9MSU1JVF9FWENFRURFRH0=";
+
+        // STATE
+        let cart = [];
+        let apiHits = 0;
+        let lastApiHit = 0;
+
+        // ---------------------------------------------------------
+        // VULNERABILITY #1: RACE CONDITION (TOCTOU)
+        // ---------------------------------------------------------
+        // Global counter to track simultaneous requests
+        let activeRequests = 0;
+
+        async function attemptPurchase(id, name, price) {
+            const msgEl = document.getElementById(`msg-${id}`);
+    
+            // 1. Increment request counter (Simulates server load)
+            activeRequests++;
+    
+            // Visual Feedback
+            msgEl.innerText = "Checking Stock...";
+    
+            // 2. Network Latency Simulation (The "Race" Window)
+            // We wait 400ms. This gives the user time to click more.
+            await new Promise(r => setTimeout(r, 400)); 
+
+            // 3. THE VULNERABILITY (Race Condition / Fail Open)
+            // Normally, stock is 0. 
+            // BUT, if the user spams clicks, 'activeRequests' will be high (ex., > 4).
+            // The system "panics" or has a logic flaw that lets requests through under load.
+    
+            if (activeRequests > 4) {
+                // SUCCESS: The Race Condition bypassed the check!
+                cart.push({id, name, price, qty: 1});
+                updateCart();
+        
+                msgEl.style.color = "green";
+                msgEl.innerText = "System Glitch: Added to Cart!";
+                revealFlag('flag-1', _0x1);
+            } else {
+                // FAILURE: Normal behavior
+                msgEl.style.color = "red";
+                msgEl.innerText = "Out of Stock";
+            }
+
+            // 4. Decrement counter as request finishes
+            activeRequests--;
+        }
+
+        // ---------------------------------------------------------
+        // VULNERABILITY #2: IMPROPER INPUT HANDLING
+        // ---------------------------------------------------------
+        function updateCart() {
+            const container = document.getElementById('cart-contents');
+            container.innerHTML = "";
+            let total = 0;
+
+            cart.forEach((item, index) => {
+                total += item.price * item.qty;
+                
+                const div = document.createElement('div');
+                div.className = 'cart-item';
+                div.innerHTML = `
+                    <span>${item.name}</span>
+                    <input type="number" value="${item.qty}" onchange="updateQty(${index}, this.value)">
+                `;
+                container.appendChild(div);
+            });
+
+            const totalEl = document.getElementById('total-price');
+            totalEl.innerText = "$" + total.toFixed(2);
+
+            // CHECK EXPLOIT
+            if(total < 0) {
+                totalEl.style.color = "red";
+                revealFlag('flag-2', _0x2);
+            } else {
+                totalEl.style.color = "#27ae60";
+            }
+        }
+
+        function updateQty(index, val) {
+            // VULNERABILITY
+            cart[index].qty = parseInt(val);
+            updateCart();
+        }
+
+        // ---------------------------------------------------------
+        // VULNERABILITY #3: API RESOURCE EXHAUSTION
+        // ---------------------------------------------------------
+        function calculateShipping() {
+            const now = Date.now();
+            const resultDiv = document.getElementById('shipping-result');
+            
+            // Reset counter if it's been more than 5 seconds
+            if (now - lastApiHit > 5000) {
+                apiHits = 0;
+            }
+            lastApiHit = now;
+            apiHits++;
+
+            // VULNERABILITY
+            // Threshold
+            if (apiHits > 10) {
+                document.getElementById('api-crash').style.display = 'flex';
+                document.getElementById('flag-3').innerText = atob(_0x3);
+                return;
+            }
+
+            // Normal Behavior
+            resultDiv.innerText = "Calculating...";
+            setTimeout(() => {
+                resultDiv.innerText = "Shipping: $5.99";
+            }, 300);
+        }
+
+        // SUCCESS: Reveal Flag
+        function revealFlag(elementId, b64Flag) {
+            const el = document.getElementById(elementId);
+            if(el.style.display !== 'block') {
+                el.style.display = 'block';
+                el.innerText = "CAPTURED: " + atob(b64Flag);
+            }
+        }
+    </script>
+</body>
+</html>
